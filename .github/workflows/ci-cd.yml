@@ -1,0 +1,68 @@
+name: Backend CI/CD – Build → ECR → Update Manifests
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  APP_NAME: backend
+  MANIFESTS_PATH: apps/backend
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set image variables
+        id: vars
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${SHORT_SHA}"
+          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.vars.outputs.IMAGE }}
+
+      - name: Clone manifests repo
+        env:
+          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+          REPO: ${{ secrets.MANIFESTS_REPO }}
+        run: |
+          git clone "${REPO}" manifests
+          cd manifests
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update backend deployment image & push
+        working-directory: manifests
+        env:
+          IMAGE: ${{ steps.vars.outputs.IMAGE }}
+          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+        run: |
+          FILE="${MANIFESTS_PATH}/deployment.yaml"
+          sed -i "0,/IMAGE_PLACEHOLDER/s//${IMAGE}/" "$FILE"
+          git add "$FILE"
+          git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${{ github.repository_owner }}/k8s-manifests.git"
+          git push origin HEAD:main
