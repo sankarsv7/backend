@@ -1,4 +1,4 @@
-name: Backend CI/CD – Build → ECR → Update Manifests
+name: Backend CI/CD Build → ECR → Update Manifests
 
 on:
   push:
@@ -54,15 +54,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Update backend deployment image & push
-        working-directory: manifests
-        env:
-          IMAGE: ${{ steps.vars.outputs.IMAGE }}
-          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+      - name: Update image in manifests repo
         run: |
           FILE="${MANIFESTS_PATH}/deployment.yaml"
-          sed -i "0,/IMAGE_PLACEHOLDER/s//${IMAGE}/" "$FILE"
+          sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
           git add "$FILE"
           git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${{ github.repository_owner }}/k8s-manifests.git"
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/sankarsv7/k8s-manifests.git"
           git push origin HEAD:main
+
