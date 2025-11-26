@@ -46,20 +46,35 @@ jobs:
 
       - name: Clone manifests repo
         env:
-          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+          # Assuming REPO secret contains the base URL: e.g., https://github.com/sankarsv7/k8s-manifests.git
           REPO: ${{ secrets.MANIFESTS_REPO }}
         run: |
-          git clone "${REPO}" manifests
-          cd manifests
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Use --depth 1 to speed up the clone
+          git clone --depth 1 "${REPO}" manifests
 
       - name: Update image in manifests repo
+        # FIX: This sets the current working directory for the 'run' command
+        working-directory: manifests
+        env:
+          # FIX: Explicitly pass the output variable and secret to this step's environment
+          IMAGE: ${{ steps.vars.outputs.IMAGE }}
+          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+          
         run: |
+          # Configure Git within the cloned repository
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # FILE is now correctly found relative to the 'manifests/' folder
           FILE="${MANIFESTS_PATH}/deployment.yaml"
+          
+          # Replace the placeholder
           sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
+          
+          # Commit the change
           git add "$FILE"
           git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/sankarsv7/k8s-manifests.git"
-          git push origin HEAD:main
-
+          
+          # Push directly to the manifest repo using the token in the URL
+          # FIX: Replaced 'git remote set-url' and 'git push origin' with a single, explicit push.
+          git push "https://x-access-token:${TOKEN}@github.com/sankarsv7/k8s-manifests.git" HEAD:main
