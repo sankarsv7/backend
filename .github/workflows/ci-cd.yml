@@ -6,6 +6,7 @@ on:
       - main
 
 env:
+  # ... existing global environment variables ...
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   APP_NAME: backend
@@ -18,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ... AWS Configuration & Login steps ...
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -44,31 +47,32 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.IMAGE }}
 
-      - name: Clone manifests repo
+      - name: Clone and Config Manifests Repo
+        # Note: We are removing 'cd manifests' from here and configuring git outside of the 'run' block
         env:
-          # Assuming REPO secret contains the base URL: e.g., https://github.com/sankarsv7/k8s-manifests.git
           REPO: ${{ secrets.MANIFESTS_REPO }}
         run: |
-          # Use --depth 1 to speed up the clone
-          git clone --depth 1 "${REPO}" manifests
+          # The manifest repository is cloned into a subdirectory named 'manifests'
+          git clone "${REPO}" manifests
 
       - name: Update image in manifests repo
-        # FIX: This sets the current working directory for the 'run' command
+        # FIX 1: This is the crucial line: it forces the step to run inside the cloned folder.
         working-directory: manifests
+        
         env:
-          # FIX: Explicitly pass the output variable and secret to this step's environment
+          # FIX 2: Variables from previous steps/secrets must be explicitly passed to the shell.
           IMAGE: ${{ steps.vars.outputs.IMAGE }}
           TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
           
         run: |
-          # Configure Git within the cloned repository
+          # Git user config must be set inside the cloned repository *before* committing
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # FILE is now correctly found relative to the 'manifests/' folder
+          # FILE is now correctly resolved relative to the 'manifests' directory: manifests/apps/backend/deployment.yaml
           FILE="${MANIFESTS_PATH}/deployment.yaml"
           
-          # Replace the placeholder
+          # Replace placeholder
           sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
           
           # Commit the change
@@ -76,5 +80,4 @@ jobs:
           git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
           
           # Push directly to the manifest repo using the token in the URL
-          # FIX: Replaced 'git remote set-url' and 'git push origin' with a single, explicit push.
           git push "https://x-access-token:${TOKEN}@github.com/sankarsv7/k8s-manifests.git" HEAD:main
