@@ -10,7 +10,7 @@ env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   APP_NAME: backend
-  MANIFESTS_PATH: apps/backend
+  MANIFESTS_PATH: k8s-manifests/apps/backend
 
 jobs:
   build-deploy:
