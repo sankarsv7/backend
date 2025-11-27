@@ -57,11 +57,18 @@ jobs:
         docker push $IMAGE
         echo "ECR push completed."
 
-    - name: Clone manifests repo
+    - name: Checkout manifests repo
+      uses: actions/checkout@v4
+      with:
+        repository: sankarsv7/k8s-manifests
+        path: manifests
+        token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+
+    - name: Debug manifests repo
       run: |
-        git clone https://x-access-token:${{ secrets.MANIFESTS_REPO_TOKEN }}@github.com/sankarsv7/k8s-manifests.git manifests
-        echo "Clone completed. Listing files:"
+        echo "📁 Listing cloned manifests repo:"
         ls -R manifests
+
 
     - name: Debug manifests repo
       run: |
