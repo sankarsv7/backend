@@ -2,14 +2,12 @@ name: Backend CI/CD Build → ECR → Update Manifests
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   APP_NAME: backend
-  # This path is correct relative to the manifest repository root
   MANIFESTS_PATH: apps/backend
 
 jobs:
@@ -17,64 +15,88 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Echo Workflow Start
+      run: echo "🚀 Starting Backend CI/CD Pipeline…"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+    - name: Checkout backend repo
+      uses: actions/checkout@v4
 
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
+    - name: Debug Backend Repo Structure
+      run: |
+        echo "📁 Current backend repo directory:"
+        pwd
+        echo "📄 Listing files:"
+        ls -R .
 
-      - name: Set image variables
-        id: vars
-        run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${SHORT_SHA}"
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
-          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_OUTPUT
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Build & push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.vars.outputs.IMAGE }}
+    - name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Clone manifests repo
-        run: |
-          # Clones the manifest repository into a subdirectory named 'manifests'
-          # NOTE: The 'cd manifests' command has been intentionally removed from here.
-          git clone https://x-access-token:${{ secrets.MANIFESTS_REPO_TOKEN }}@github.com/sankarsv7/k8s-manifests.git manifests
+    - name: Set image variables
+      id: vars
+      run: |
+        IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${GITHUB_SHA::7}"
+        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+        echo "🖼  Docker image tag set to: $IMAGE"
 
-      - name: Update image in manifests repo
-        # 🌟 FIX: This sets the current working directory for the 'run' command
-        working-directory: manifests
-        
-        env:
-          # FIX: Explicitly pass the output variable and secret to this step's environment
-          IMAGE: ${{ steps.vars.outputs.IMAGE }}
-          TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
-          
-        run: |
-          # Configure Git within the cloned repository
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # FILE is now correctly found relative to the 'manifests/' folder
-          FILE="${MANIFESTS_PATH}/deployment.yaml"
-          
-          # Replace the placeholder
-          sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
-          
-          # Commit the change
-          git add "$FILE"
-          git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
-          
-          # Push directly to the manifest repo using the token in the URL
-          # FIX: This replaces 'git remote set-url' and 'git push origin' with a single, explicit, authenticated push.
-          git push "https://x-access-token:${TOKEN}@github.com/sankarsv7/k8s-manifests.git" HEAD:main
+    - name: Build Docker image
+      run: |
+        echo "🐳 Building Docker image…"
+        docker build -t $IMAGE .
+        echo "Docker build completed."
+
+    - name: Push Docker image
+      run: |
+        echo "📤 Pushing image to ECR…"
+        docker push $IMAGE
+        echo "ECR push completed."
+
+    - name: Clone manifests repo
+      run: |
+        echo "📥 Cloning k8s-manifests repo…"
+        git clone "https://x-access-token:${{ secrets.MANIFESTS_REPO_TOKEN }}@github.com/sankarsv7/k8s-manifests.git" manifests
+        echo "Clone complete."
+
+    - name: Debug manifests repo
+      run: |
+        echo "📁 Listing cloned manifests repo:"
+        ls -R manifests
+        echo "📌 Verifying expected file:"
+        ls manifests/${MANIFESTS_PATH}
+
+    - name: Update image in manifests repo
+      working-directory: manifests
+      run: |
+        echo "✏ Updating image in deployment file…"
+        FILE="${MANIFESTS_PATH}/deployment.yaml"
+
+        echo "Looking for file: $FILE"
+        ls -R .
+
+        if [ ! -f "$FILE" ]; then
+          echo "❌ ERROR: File not found: $FILE"
+          exit 1
+        fi
+
+        sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
+
+        echo "🔍 Updated deployment.yaml:"
+        cat "$FILE"
+
+        git config user.email "github-actions@github.com"
+        git config user.name "GitHub Actions"
+
+        git add "$FILE"
+        git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "⚠ No changes to commit"
+
+        echo "📤 Pushing updated manifest back to repo…"
+        git push origin HEAD:main
+
+    - name: Done
+      run: echo "🎉 Backend CI/CD completed successfully!"
