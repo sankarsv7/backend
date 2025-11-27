@@ -60,6 +60,7 @@ jobs:
     - name: Clone manifests repo
       run: |
         echo "📥 Cloning k8s-manifests repo…"
+        echo "repo token-::" ${{ secrets.MANIFESTS_REPO_TOKEN }}
         git clone "https://x-access-token:${{ secrets.MANIFESTS_REPO_TOKEN }}@github.com/sankarsv7/k8s-manifests.git" manifests
         echo "Clone complete."
 
