@@ -8,7 +8,6 @@ env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   APP_NAME: backend
-  MANIFESTS_PATH: apps/backend
 
 jobs:
   build-deploy:
@@ -18,10 +17,10 @@ jobs:
     - name: Checkout backend repo
       uses: actions/checkout@v4
 
-    - name: Checkout manifests repo
+    - name: Checkout manifests repo (correct repo!)
       uses: actions/checkout@v4
       with:
-        repository: sankarsv7/k8s-manifests
+        repository: sankarsv7/manifests
         token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
         path: manifests
 
@@ -44,15 +43,15 @@ jobs:
       run: |
         IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${GITHUB_SHA::7}"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+        echo "Building image: $IMAGE"
         docker build -t $IMAGE .
         docker push $IMAGE
 
-    - name: Update Image in Deployment File
+    - name: Update Image in Deployment File (replace any tag)
       run: |
-        FILE="manifests/${MANIFESTS_PATH}/deployment.yaml"
+        FILE="manifests/apps/backend/deployment.yaml"
         echo "Updating $FILE"
-        ls -l "manifests/${MANIFESTS_PATH}"
-        sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
+        sed -i "s|image: .*|image: ${IMAGE}|g" "$FILE"
         cat "$FILE"
 
     - name: Commit & Push Back
@@ -60,6 +59,6 @@ jobs:
         cd manifests
         git config user.email "github-actions@github.com"
         git config user.name "GitHub Actions"
-        git add .
+        git add apps/backend/deployment.yaml
         git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
         git push origin HEAD:main
