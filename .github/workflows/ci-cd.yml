@@ -15,18 +15,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Echo Workflow Start
-      run: echo "🚀 Starting Backend CI/CD Pipeline…"
-
     - name: Checkout backend repo
       uses: actions/checkout@v4
 
-    - name: Debug Backend Repo Structure
+    - name: Checkout manifests repo
+      uses: actions/checkout@v4
+      with:
+        repository: sankarsv7/k8s-manifests
+        token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+        path: manifests
+
+    - name: Debug manifests repo
       run: |
-        echo "📁 Current backend repo directory:"
-        pwd
-        echo "📄 Listing files:"
-        ls -R .
+        echo "📁 MANIFESTS REPO CONTENTS:"
+        ls -R manifests
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
@@ -38,76 +40,26 @@ jobs:
     - name: Login to Amazon ECR
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Set image variables
-      id: vars
+    - name: Build & Push Image
       run: |
         IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${GITHUB_SHA::7}"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-        echo "🖼  Docker image tag set to: $IMAGE"
-
-    - name: Build Docker image
-      run: |
-        echo "🐳 Building Docker image…"
         docker build -t $IMAGE .
-        echo "Docker build completed."
-
-    - name: Push Docker image
-      run: |
-        echo "📤 Pushing image to ECR…"
         docker push $IMAGE
-        echo "ECR push completed."
 
-    - name: Checkout manifests repo
-      uses: actions/checkout@v4
-      with:
-        repository: sankarsv7/k8s-manifests
-        path: manifests
-        token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
-    - name: Print all paths
+    - name: Update Image in Deployment File
       run: |
-        echo "📌 Current dir: $(pwd)"
-        echo "📂 Listing everything recursively:"
-        ls -R .    
-
-    - name: Debug manifests repo
-      run: |
-        echo "📁 Listing cloned manifests repo:"
-        ls -R manifests
-
-    - name: Debug manifests repo
-      run: |
-        echo "📁 Listing cloned manifests repo:"
-        ls -R manifests
-        echo "📌 Verifying expected file:"
-        ls manifests/${MANIFESTS_PATH}
-
-    - name: Update image in manifests repo
-      working-directory: manifests
-      run: |
-        echo "✏ Updating image in deployment file…"
-        FILE="${MANIFESTS_PATH}/deployment.yaml"
-
-        echo "Looking for file: $FILE"
-        ls -R .
-
-        if [ ! -f "$FILE" ]; then
-          echo "❌ ERROR: File not found: $FILE"
-          exit 1
-        fi
-
+        FILE="manifests/${MANIFESTS_PATH}/deployment.yaml"
+        echo "Updating $FILE"
+        ls -l "manifests/${MANIFESTS_PATH}"
         sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" "$FILE"
-
-        echo "🔍 Updated deployment.yaml:"
         cat "$FILE"
 
+    - name: Commit & Push Back
+      run: |
+        cd manifests
         git config user.email "github-actions@github.com"
         git config user.name "GitHub Actions"
-
-        git add "$FILE"
-        git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "⚠ No changes to commit"
-
-        echo "📤 Pushing updated manifest back to repo…"
+        git add .
+        git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
         git push origin HEAD:main
-
-    - name: Done
-      run: echo "🎉 Backend CI/CD completed successfully!"
