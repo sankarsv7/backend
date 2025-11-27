@@ -63,12 +63,16 @@ jobs:
         repository: sankarsv7/k8s-manifests
         path: manifests
         token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+    - name: Print all paths
+      run: |
+        echo "📌 Current dir: $(pwd)"
+        echo "📂 Listing everything recursively:"
+        ls -R .    
 
     - name: Debug manifests repo
       run: |
         echo "📁 Listing cloned manifests repo:"
         ls -R manifests
-
 
     - name: Debug manifests repo
       run: |
