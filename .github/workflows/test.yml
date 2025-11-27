@@ -1,8 +1,8 @@
-name: Backend CI/CD Build → ECR → Update Manifests
+name: Backend CI/CD → ECR → Update Manifests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -14,21 +14,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout backend repo
+    # ----------------------------
+    # 1. Checkout backend repo
+    # ----------------------------
+    - name: Checkout backend repository
       uses: actions/checkout@v4
 
-    - name: Checkout manifests repo (correct repo!)
+    # ----------------------------
+    # 2. Checkout manifests repo
+    # ----------------------------
+    - name: Checkout manifests repo
       uses: actions/checkout@v4
       with:
-        repository: sankarsv7/manifests
+        repository: sankarsv7/manifests   # ✅ correct repo!
         token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
         path: manifests
 
     - name: Debug manifests repo
       run: |
-        echo "📁 MANIFESTS REPO CONTENTS:"
+        echo "📁 manifests repo structure:"
         ls -R manifests
 
+    # ----------------------------
+    # 3. AWS Authentication
+    # ----------------------------
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
@@ -39,26 +48,63 @@ jobs:
     - name: Login to Amazon ECR
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build & Push Image
+    # ----------------------------
+    # 4. Build and Push Docker Image
+    # ----------------------------
+    - name: Build and Push Image
       run: |
         IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${GITHUB_SHA::7}"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-        echo "Building image: $IMAGE"
+        echo "🐳 Building image: $IMAGE"
         docker build -t $IMAGE .
         docker push $IMAGE
 
-    - name: Update Image in Deployment File (replace any tag)
+    # ----------------------------
+    # 5. Generate db-secret.yaml from GitHub Secrets
+    # ----------------------------
+    - name: Create DB Secret manifest
+      run: |
+        cat <<EOF > manifests/apps/backend/db-secret.yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: db-secret
+          namespace: backend
+        type: Opaque
+        data:
+          DB_HOST: "$(echo -n '${{ secrets.DB_HOST }}' | base64)"
+          DB_USER: "$(echo -n '${{ secrets.DB_USER }}' | base64)"
+          DB_PASSWORD: "$(echo -n '${{ secrets.DB_PASSWORD }}' | base64)"
+          DB_NAME: "$(echo -n '${{ secrets.DB_NAME }}' | base64)"
+          DB_PORT: "$(echo -n '${{ secrets.DB_PORT }}' | base64)"
+        EOF
+
+        echo "📄 Generated db-secret.yaml:"
+        cat manifests/apps/backend/db-secret.yaml
+
+    # ----------------------------
+    # 6. Update Deployment YAML with new IMAGE
+    # ----------------------------
+    - name: Update image in deployment.yaml
       run: |
         FILE="manifests/apps/backend/deployment.yaml"
-        echo "Updating $FILE"
+        echo "Updating image in $FILE ..."
         sed -i "s|image: .*|image: ${IMAGE}|g" "$FILE"
         cat "$FILE"
 
-    - name: Commit & Push Back
+    # ----------------------------
+    # 7. Commit changes back to manifests repo
+    # ----------------------------
+    - name: Commit & Push
       run: |
         cd manifests
         git config user.email "github-actions@github.com"
         git config user.name "GitHub Actions"
+
         git add apps/backend/deployment.yaml
-        git commit -m "ci: update backend image → ${IMAGE} [skip ci]" || echo "No changes"
+        git add apps/backend/db-secret.yaml
+
+        git commit -m "ci: update backend image → ${IMAGE} + update DB secrets [skip ci]" || echo "⚠️ No changes to commit"
+
         git push origin HEAD:main
+
