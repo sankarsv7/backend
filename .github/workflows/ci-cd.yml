@@ -46,13 +46,10 @@ jobs:
           tags: ${{ steps.vars.outputs.IMAGE }}
 
       - name: Clone manifests repo
-        env:
-          # Assuming REPO secret contains the base URL: e.g., https://github.com/sankarsv7/k8s-manifests.git
-          REPO: ${{ secrets.MANIFESTS_REPO }}
         run: |
           # Clones the manifest repository into a subdirectory named 'manifests'
           # NOTE: The 'cd manifests' command has been intentionally removed from here.
-          git clone "${REPO}" manifests
+          git clone https://x-access-token:${{ secrets.MANIFESTS_REPO_TOKEN }}@github.com/sankarsv7/k8s-manifests.git manifests
 
       - name: Update image in manifests repo
         # 🌟 FIX: This sets the current working directory for the 'run' command
