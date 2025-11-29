@@ -93,7 +93,7 @@ jobs:
         cat "$FILE"
 
     # ----------------------------
-    # 7. Commit changes back to manifests repo
+    # 7. Commit changes back to manifests repo 
     # ----------------------------
     - name: Commit & Push
       run: |
