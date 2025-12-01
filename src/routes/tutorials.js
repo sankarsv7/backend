@@ -1,7 +1,7 @@
 // routes/tutorial.js
 const express = require('express');
 const router = express.Router();
-const db = require('../db');
+const db = require('../db.js');
 
 // CREATE tutorial
 router.post('/', async (req, res) => {

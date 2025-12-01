@@ -1,9 +1,9 @@
-// app.js
-
-// app.js
+// src/index.js
 const express = require('express');
 const cors = require('cors');
 const app = express();
+
+// Updated route path due to new folder structure
 const tutorialsRoute = require('./routes/tutorials');
 
 app.use(cors());
